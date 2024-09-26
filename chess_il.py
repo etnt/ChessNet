@@ -1,56 +1,15 @@
 import chess
-import chess.engine
+import chess.pgn
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import random
 import logging
-import sys
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
-
-
-# ---------------------------------------------------------------------
-# Breakdown of the Code
-#
-# ChessNet Class: This is a simple fully connected neural network that maps
-# a board state (flattened into a 1D vector) to a move. The move is represented
-# by a 64 × 64 matrix, where each possible move is an index
-#  (from square * 64 + to square).
-#
-# Board Representation (board_to_tensor): We represent the chess board as
-# an 8x8x12 tensor, where each slice along the third dimension represents
-# a piece type (6 for white and 6 for black). This tensor is then flattened
-# nto a 1D vector as input to the neural network.
-#
-# Move Encoding (move_to_label): Each move is represented as a label
-# (integer) by encoding the from_square and to_square on the board into
-# a single number.
-#
-# Data Generation: We generate training data by playing random moves
-# using Stockfish. Stockfish suggests the best move, and we save the
-# board state and the corresponding best move label.
-#
-# Training Loop: We train the network using CrossEntropyLoss.
-# The network learns to predict the best move label given a board state.
-#
-# Testing: We test the trained model by predicting the best move on
-# a random board. The model outputs a label, which is converted back
-# into a chess move.
-# ---------------------------------------------------------------------
-
-# Initialize Stockfish engine
-STOCKFISH_PATH = "/opt/homebrew/bin/stockfish"  # Adjust the path for your system
-engine = chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH)
-
-def get_best_move(board):
-    # Set the board position
-    result = engine.play(board, chess.engine.Limit(time=0.5))
-    best_move = result.move
-
-    return best_move
 
 # Neural network to predict the best move from the board state
 class ChessNet(nn.Module):
@@ -88,27 +47,44 @@ def label_to_move(label):
     to_square = label % 64
     return from_square, to_square
 
-# Generate dataset using Stockfish
-def generate_data(num_games=1000):
+# Function to read PGN files from a directory
+def read_pgn_files(directory):
+    games = []
+    for filename in os.listdir(directory):
+        if filename.endswith('.pgn'):
+            filepath = os.path.join(directory, filename)
+            print(f"Reading PGN file: {filename}")
+            with open(filepath) as pgn_file:
+                while True:
+                    game = chess.pgn.read_game(pgn_file)
+                    if game is None:
+                        break
+                    games.append(game)
+    return games
+
+# Generate dataset using PGN games
+def generate_data(pgn_directory, num_games=1000):
     data = []
-    for i in range(num_games):
-        board = chess.Board()
-        num_moves = 1
-        while not board.is_game_over():
-            print(f"Number of Games: {i+1}/{num_games} , number of moves: {num_moves}", end='\r')
-            #sys.stdout.flush()
-            best_move = get_best_move(board)  # Assuming this function gets the best move from Stockfish
-            logging.info(f"Board FEN: {board.fen()}")
-            logging.info(f"Best move: {best_move}")
-            if best_move not in board.legal_moves:
-                logging.error(f"Illegal move detected: {best_move}")
-                break
-            board.push(best_move)
-            data.append((board_to_tensor(board), move_to_label(best_move)))
-            num_moves += 1
+    games = read_pgn_files(pgn_directory)
+    print(f"Found {len(games)} games in the PGN directory.")
+    
+    if not games:
+        raise ValueError(f"No PGN games found in directory: {pgn_directory}")
+    
+    total_moves = 0
+    for i, game in enumerate(games[:num_games]):
+        board = game.board()
+        for move in game.mainline_moves():
+            total_moves += 1
+            if total_moves % 1000 == 0:  # Print progress every 1000 moves
+                print(f"Processed {i+1} games, {total_moves} total moves")
+            data.append((board_to_tensor(board), move_to_label(move)))
+            board.push(move)
+    
+    print(f"Processed {min(num_games, len(games))} games. Total positions: {len(data)}")
     return data
 
-# Train the neural network using Stockfish data
+# Train the neural network using PGN data
 def train_model(data, model, epochs=10, batch_size=64, learning_rate=0.001):
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
@@ -140,14 +116,46 @@ def test_model(board, model):
     from_square, to_square = label_to_move(predicted_label.item())
     return chess.Move(from_square, to_square)
 
+# Function to print the board with enumeration
+def print_board_with_enumeration(board):
+    board_str = str(board)
+    rows = board_str.split('\n')
+    
+    # Add column labels (a-h)
+    col_labels = '   a b c d e f g h'
+    print(col_labels)
+    
+    # Add row numbers and board contents
+    for i, row in enumerate(rows):
+        print(f"{8-i}  {row}  {8-i}")
+    
+    # Repeat column labels at the bottom
+    print(col_labels)
+
 # Main function
 if __name__ == "__main__":
     # Initialize the neural network model
     model = ChessNet()
 
-    # Step 1: Generate data using Stockfish
-    print("Generating data using Stockfish...")
-    data = generate_data(num_games=10)  # You can increase this for better results
+    # Step 1: Generate data using PGN files
+    pgn_directory = "pgn"  # Assuming PGN files are stored in a 'pgn' directory
+    print("Generating data from PGN files...")
+    try:
+        if not os.path.exists(pgn_directory):
+            raise ValueError(f"Directory not found: {pgn_directory}")
+        data = generate_data(pgn_directory, num_games=100)  # You can increase this for better results
+        print(f"Generated {len(data)} training examples")
+    except ValueError as e:
+        print(f"Error: {e}")
+        print("Please ensure that PGN files are present in the 'pgn' directory.")
+        exit(1)
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        exit(1)
+    
+    if not data:
+        print("No data was generated. Exiting.")
+        exit(1)
     
     # Step 2: Train the model on the generated data
     print("Training model...")
@@ -157,9 +165,7 @@ if __name__ == "__main__":
     print("Testing the model on a random position...")
     board = chess.Board()
     print("Initial board:")
-    print(board)
+    print_board_with_enumeration(board)
     
     predicted_move = test_model(board, model)
     print(f"Predicted move: {predicted_move}")
-    
-    engine.quit()  # Close Stockfish engine

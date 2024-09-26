@@ -5,6 +5,12 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import random
+import logging
+import sys
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
 
 # ---------------------------------------------------------------------
 # Breakdown of the Code
@@ -38,6 +44,13 @@ import random
 # Initialize Stockfish engine
 STOCKFISH_PATH = "/opt/homebrew/bin/stockfish"  # Adjust the path for your system
 engine = chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH)
+
+def get_best_move(board):
+    # Set the board position
+    result = engine.play(board, chess.engine.Limit(time=0.5))
+    best_move = result.move
+
+    return best_move
 
 # Neural network to predict the best move from the board state
 class ChessNet(nn.Module):
@@ -78,16 +91,21 @@ def label_to_move(label):
 # Generate dataset using Stockfish
 def generate_data(num_games=1000):
     data = []
-    for _ in range(num_games):
+    for i in range(num_games):
         board = chess.Board()
+        num_moves = 1
         while not board.is_game_over():
-            if board.turn == chess.WHITE:
-                result = engine.play(board, chess.engine.Limit(time=0.1))
-                best_move = result.move
-                board_tensor = board_to_tensor(board)
-                move_label = move_to_label(best_move)
-                data.append((board_tensor, move_label))
+            print(f"Number of Games: {i+1}/{num_games} , number of moves: {num_moves}", end='\r')
+            #sys.stdout.flush()
+            best_move = get_best_move(board)  # Assuming this function gets the best move from Stockfish
+            logging.info(f"Board FEN: {board.fen()}")
+            logging.info(f"Best move: {best_move}")
+            if best_move not in board.legal_moves:
+                logging.error(f"Illegal move detected: {best_move}")
+                break
             board.push(best_move)
+            data.append((board_to_tensor(board), move_to_label(best_move)))
+            num_moves += 1
     return data
 
 # Train the neural network using Stockfish data
@@ -129,7 +147,7 @@ if __name__ == "__main__":
 
     # Step 1: Generate data using Stockfish
     print("Generating data using Stockfish...")
-    data = generate_data(num_games=100)  # You can increase this for better results
+    data = generate_data(num_games=10)  # You can increase this for better results
     
     # Step 2: Train the model on the generated data
     print("Training model...")

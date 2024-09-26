@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 class ChessNet(nn.Module):
     def __init__(self):
         super(ChessNet, self).__init__()
-        self.fc1 = nn.Linear(8 * 8 * 12, 1024)
+        self.fc1 = nn.Linear(8 * 8 * 12 + 1, 1024)  # +1 for the turn information
         self.fc2 = nn.Linear(1024, 512)
         self.fc3 = nn.Linear(512, 4096)  # Output for 64*64 possible moves (simplified)
 
@@ -35,7 +35,11 @@ def board_to_tensor(board):
     for square, piece in piece_map.items():
         row, col = divmod(square, 8)
         tensor[row, col, piece_types[piece.symbol()]] = 1
-    return torch.tensor(tensor).view(1, -1)  # Flatten to a vector
+    
+    # Add turn information
+    turn = np.array([1.0 if board.turn == chess.WHITE else 0.0], dtype=np.float32)
+    
+    return torch.tensor(np.concatenate((tensor.flatten(), turn)))
 
 # Function to encode move as a label (64*64 possible moves)
 def move_to_label(move):
@@ -45,7 +49,7 @@ def move_to_label(move):
 def label_to_move(label):
     from_square = label // 64
     to_square = label % 64
-    return from_square, to_square
+    return chess.Move(from_square, to_square)
 
 # Function to read PGN files from a directory
 def read_pgn_files(directory):
@@ -95,7 +99,7 @@ def train_model(data, model, epochs=10, batch_size=64, learning_rate=0.001):
         for i in range(0, len(data), batch_size):
             batch = data[i:i+batch_size]
             boards, labels = zip(*batch)
-            boards = torch.cat(boards)
+            boards = torch.stack(boards)
             labels = torch.tensor(labels)
             
             optimizer.zero_grad()
@@ -109,12 +113,21 @@ def train_model(data, model, epochs=10, batch_size=64, learning_rate=0.001):
 
 # Test the model by making a prediction
 def test_model(board, model):
-    board_tensor = board_to_tensor(board)
+    board_tensor = board_to_tensor(board).unsqueeze(0)
     with torch.no_grad():
         output = model(board_tensor)
-    _, predicted_label = torch.max(output, 1)
-    from_square, to_square = label_to_move(predicted_label.item())
-    return chess.Move(from_square, to_square)
+    
+    # Get top 10 moves
+    top_moves = torch.topk(output, 10).indices[0]
+    
+    # Find the first legal move
+    for move_label in top_moves:
+        move = label_to_move(move_label.item())
+        if move in board.legal_moves:
+            return move
+    
+    # If no legal moves found in top 10, return a random legal move
+    return random.choice(list(board.legal_moves))
 
 # Function to print the board with enumeration
 def print_board_with_enumeration(board):
@@ -162,10 +175,17 @@ if __name__ == "__main__":
     train_model(data, model, epochs=5)
 
     # Step 3: Test the model
-    print("Testing the model on a random position...")
+    print("Testing the model on the initial position...")
     board = chess.Board()
     print("Initial board:")
     print_board_with_enumeration(board)
+    print(f"Turn: {'White' if board.turn == chess.WHITE else 'Black'}")
     
     predicted_move = test_model(board, model)
     print(f"Predicted move: {predicted_move}")
+    
+    if predicted_move in board.legal_moves:
+        print("The predicted move is legal.")
+    else:
+        print("Warning: The predicted move is not legal!")
+        print("Legal moves:", list(board.legal_moves))

@@ -124,10 +124,10 @@ def test_model(board, model):
     for move_label in top_moves:
         move = label_to_move(move_label.item())
         if move in board.legal_moves:
-            return move
+            return move, True  # True indicates the move was predicted
     
     # If no legal moves found in top 10, return a random legal move
-    return random.choice(list(board.legal_moves))
+    return random.choice(list(board.legal_moves)), False  # False indicates a random move
 
 # Function to print the board with enumeration
 def print_board_with_enumeration(board):
@@ -144,6 +144,40 @@ def print_board_with_enumeration(board):
     
     # Repeat column labels at the bottom
     print(col_labels)
+
+# Function to play against the model
+def play_against_model(model):
+    board = chess.Board()
+    
+    while not board.is_game_over():
+        print_board_with_enumeration(board)
+        print(f"Turn: {'White' if board.turn == chess.WHITE else 'Black'}")
+        
+        if board.turn == chess.WHITE:
+            # Human's turn (White)
+            while True:
+                try:
+                    move_uci = input("Enter your move (in UCI format, e.g., 'e2e4'): ")
+                    move = chess.Move.from_uci(move_uci)
+                    if move in board.legal_moves:
+                        board.push(move)
+                        break
+                    else:
+                        print("Illegal move. Try again.")
+                except ValueError:
+                    print("Invalid input. Please use UCI format (e.g., 'e2e4').")
+        else:
+            # Model's turn (Black)
+            move, is_predicted = test_model(board, model)
+            if is_predicted:
+                move_type = 'predicted'
+            else:
+                move_type = 'random'
+            print(f"Model's move ({move_type}): {move}")
+            board.push(move)
+    
+    print_board_with_enumeration(board)
+    print("Game over. Result:", board.result())
 
 # Main function
 if __name__ == "__main__":
@@ -174,18 +208,32 @@ if __name__ == "__main__":
     print("Training model...")
     train_model(data, model, epochs=5)
 
-    # Step 3: Test the model
-    print("Testing the model on the initial position...")
-    board = chess.Board()
-    print("Initial board:")
-    print_board_with_enumeration(board)
-    print(f"Turn: {'White' if board.turn == chess.WHITE else 'Black'}")
+    # Step 3: Choose between testing the model or playing against it
+    choice = input("Enter 1 to test the model on the initial position, or 2 to play against the model: ")
     
-    predicted_move = test_model(board, model)
-    print(f"Predicted move: {predicted_move}")
-    
-    if predicted_move in board.legal_moves:
-        print("The predicted move is legal.")
+    if choice == '1':
+        # Test the model
+        print("Testing the model on the initial position...")
+        board = chess.Board()
+        print("Initial board:")
+        print_board_with_enumeration(board)
+        print(f"Turn: {'White' if board.turn == chess.WHITE else 'Black'}")
+        
+        predicted_move, is_predicted = test_model(board, model)
+        print(f"Predicted move: {predicted_move}")
+        if is_predicted:
+            print("This move was predicted by the model.")
+        else:
+            print("This move was randomly selected from legal moves.")
+        
+        if predicted_move in board.legal_moves:
+            print("The move is legal.")
+        else:
+            print("Warning: The move is not legal!")
+            print("Legal moves:", list(board.legal_moves))
+    elif choice == '2':
+        # Play against the model
+        print("Starting a game against the model. You'll play as White.")
+        play_against_model(model)
     else:
-        print("Warning: The predicted move is not legal!")
-        print("Legal moves:", list(board.legal_moves))
+        print("Invalid choice. Exiting.")

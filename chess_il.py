@@ -7,6 +7,8 @@ import numpy as np
 import random
 import logging
 import os
+import argparse
+import json
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -67,7 +69,7 @@ def read_pgn_files(directory):
     return games
 
 # Generate dataset using PGN games
-def generate_data(pgn_directory, num_games=1000):
+def generate_data(pgn_directory, max_games=None):
     data = []
     games = read_pgn_files(pgn_directory)
     print(f"Found {len(games)} games in the PGN directory.")
@@ -76,6 +78,7 @@ def generate_data(pgn_directory, num_games=1000):
         raise ValueError(f"No PGN games found in directory: {pgn_directory}")
     
     total_moves = 0
+    num_games = len(games) if max_games is None else min(max_games, len(games))
     for i, game in enumerate(games[:num_games]):
         board = game.board()
         for move in game.mainline_moves():
@@ -85,7 +88,7 @@ def generate_data(pgn_directory, num_games=1000):
             data.append((board_to_tensor(board), move_to_label(move)))
             board.push(move)
     
-    print(f"Processed {min(num_games, len(games))} games. Total positions: {len(data)}")
+    print(f"Processed {num_games} games. Total positions: {len(data)}")
     return data
 
 # Train the neural network using PGN data
@@ -179,8 +182,45 @@ def play_against_model(model):
     print_board_with_enumeration(board)
     print("Game over. Result:", board.result())
 
+# Function to save the model in a Hugging Face compatible format
+def save_model(model, model_dir):
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
+    
+    # Save the model architecture and weights
+    model_path = os.path.join(model_dir, "chess_model.pth")
+    torch.save({
+        'model_state_dict': model.state_dict(),
+        'model_architecture': model.__class__.__name__,
+    }, model_path)
+    
+    # Save a config file (optional, but useful for Hugging Face)
+    config_path = os.path.join(model_dir, "config.json")
+    config = {
+        "model_type": "ChessNet",
+        "input_size": 8 * 8 * 12 + 1,
+        "hidden_size1": 1024,
+        "hidden_size2": 512,
+        "output_size": 4096,
+    }
+    with open(config_path, 'w') as f:
+        json.dump(config, f)
+    
+    print(f"Model saved in {model_dir}")
+
+# Function to parse command-line arguments
+def parse_args():
+    parser = argparse.ArgumentParser(description="Chess Imitation Learning")
+    parser.add_argument("--max-games", type=int, default=None, help="Maximum number of games to process (default: all available)")
+    parser.add_argument("--model-dir", type=str, default="./model", help="Directory to save the trained model (default: ./model)")
+    parser.add_argument("--play", action="store_true", help="Play against the model after training")
+    return parser.parse_args()
+
 # Main function
 if __name__ == "__main__":
+    # Parse command-line arguments
+    args = parse_args()
+
     # Initialize the neural network model
     model = ChessNet()
 
@@ -190,7 +230,7 @@ if __name__ == "__main__":
     try:
         if not os.path.exists(pgn_directory):
             raise ValueError(f"Directory not found: {pgn_directory}")
-        data = generate_data(pgn_directory, num_games=100)  # You can increase this for better results
+        data = generate_data(pgn_directory, max_games=args.max_games)
         print(f"Generated {len(data)} training examples")
     except ValueError as e:
         print(f"Error: {e}")
@@ -208,32 +248,12 @@ if __name__ == "__main__":
     print("Training model...")
     train_model(data, model, epochs=5)
 
-    # Step 3: Choose between testing the model or playing against it
-    choice = input("Enter 1 to test the model on the initial position, or 2 to play against the model: ")
-    
-    if choice == '1':
-        # Test the model
-        print("Testing the model on the initial position...")
-        board = chess.Board()
-        print("Initial board:")
-        print_board_with_enumeration(board)
-        print(f"Turn: {'White' if board.turn == chess.WHITE else 'Black'}")
-        
-        predicted_move, is_predicted = test_model(board, model)
-        print(f"Predicted move: {predicted_move}")
-        if is_predicted:
-            print("This move was predicted by the model.")
-        else:
-            print("This move was randomly selected from legal moves.")
-        
-        if predicted_move in board.legal_moves:
-            print("The move is legal.")
-        else:
-            print("Warning: The move is not legal!")
-            print("Legal moves:", list(board.legal_moves))
-    elif choice == '2':
-        # Play against the model
+    # Step 3: Save the trained model
+    print("Saving model...")
+    save_model(model, args.model_dir)
+
+    # Step 4: Either play against the model or test it on the initial position
+    if args.play:
         print("Starting a game against the model. You'll play as White.")
         play_against_model(model)
-    else:
-        print("Invalid choice. Exiting.")
+ 

@@ -108,6 +108,30 @@ def label_to_move(label):
     to_square = label % 64
     return chess.Move(from_square, to_square)
 
+def simple_evaluate(board):
+    if board.is_checkmate():
+        return -10000 if board.turn else 10000
+    if board.is_stalemate() or board.is_insufficient_material():
+        return 0
+    
+    piece_values = {
+        chess.PAWN: 100,
+        chess.KNIGHT: 320,
+        chess.BISHOP: 330,
+        chess.ROOK: 500,
+        chess.QUEEN: 900,
+        chess.KING: 20000
+    }
+    
+    score = 0
+    for square in chess.SQUARES:
+        piece = board.piece_at(square)
+        if piece:
+            value = piece_values[piece.piece_type]
+            score += value if piece.color == chess.WHITE else -value
+    
+    return score
+
 def generate_move(num_moves=10):
     """
     Generate chess moves using the opening book or the loaded ChessNet model.
@@ -133,7 +157,7 @@ def generate_move(num_moves=10):
         book_move = opening_book.get(board)
         if book_move:
             logger.info(f"Move found in opening book: {book_move.move}")
-            return [board.san(book_move.move)] , "book"
+            return [board.san(book_move.move)], "book"
 
         # If no book move, use the neural network
         board_tensor = board_to_tensor(board)
@@ -148,13 +172,30 @@ def generate_move(num_moves=10):
         for move_label in top_moves:
             move = label_to_move(move_label.item())
             if move in board.legal_moves:
-                legal_moves.append(board.san(move))
+                legal_moves.append(move)
         
-        logger.info(f"Generated moves: {legal_moves}")
-        return legal_moves , "predicted"
+        # Evaluate moves using simple evaluation
+        evaluated_moves = []
+        for move in legal_moves:
+            board.push(move)
+            score = -simple_evaluate(board)  # Negative because we're evaluating from the opponent's perspective
+            board.pop()
+            evaluated_moves.append((move, score))
+        
+        # Sort moves by evaluation score
+        evaluated_moves.sort(key=lambda x: x[1], reverse=True)
+        
+        # Return the best move
+        if evaluated_moves:
+            best_move = evaluated_moves[0][0]
+            logger.info(f"Generated move: {best_move.uci()}")
+            return [board.san(best_move)], "predicted"
+        
+        logger.info("No good moves found, falling back to random move")
+        return [], "random"
     except Exception as e:
         logger.error(f"Error in generate_move: {str(e)}")
-        return [] , "random"
+        return [], "random"
 
 # Add this at the beginning of the file, after the global variable declarations
 def ensure_board_initialized():
@@ -269,25 +310,21 @@ def get_ai_move():
             logger.info(f"Game over. Result: {result}")
             return jsonify({"status": "game_over", "result": result})
         
-        generated_moves , source = generate_move()
+        generated_moves, source = generate_move()
         logger.info(f"/get_move Generated moves: {generated_moves}")
         
-        for move_san in generated_moves:
-            try:
-                move = board.parse_san(move_san)
-                if move in board.legal_moves:
-                    board.push(move)
-                    logger.info(f"AI move applied: {move_san}")
-                    return jsonify({
-                        "status": "ok",
-                        "move": move.uci(),
-                        "source": source,
-                        "new_fen": board.fen(en_passant='fen')
-                    })
-            except ValueError:
-                logger.warning(f"Invalid move generated: {move_san}")
-                continue
-
+        if generated_moves:
+            move_san = generated_moves[0]
+            move = board.parse_san(move_san)
+            board.push(move)
+            logger.info(f"AI move applied: {move_san}")
+            return jsonify({
+                "status": "ok",
+                "move": move.uci(),
+                "source": source,
+                "new_fen": board.fen(en_passant='fen')
+            })
+        
         logger.info(f"/get_move Falling back to random move")
         legal_moves = list(board.legal_moves)
         if legal_moves:
@@ -297,7 +334,7 @@ def get_ai_move():
             return jsonify({
                 "status": "ok",
                 "move": random_move.uci(),
-                "source": source,
+                "source": "random",
                 "new_fen": board.fen(en_passant='fen')
             })
         else:

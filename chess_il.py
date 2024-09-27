@@ -214,6 +214,7 @@ def parse_args():
     parser.add_argument("--max-games", type=int, default=None, help="Maximum number of games to process (default: all available)")
     parser.add_argument("--model-dir", type=str, default="./model", help="Directory to save the trained model (default: ./model)")
     parser.add_argument("--play", action="store_true", help="Play against the model after training")
+    parser.add_argument("--pgn-dir", type=str, default="./pgn", help="Directory containing PGN files (default: ./pgn)")
     return parser.parse_args()
 
 # Main function
@@ -225,16 +226,15 @@ if __name__ == "__main__":
     model = ChessNet()
 
     # Step 1: Generate data using PGN files
-    pgn_directory = "pgn"  # Assuming PGN files are stored in a 'pgn' directory
-    print("Generating data from PGN files...")
+    print(f"Generating data from PGN files in {args.pgn_dir}...")
     try:
-        if not os.path.exists(pgn_directory):
-            raise ValueError(f"Directory not found: {pgn_directory}")
-        data = generate_data(pgn_directory, max_games=args.max_games)
+        if not os.path.exists(args.pgn_dir):
+            raise ValueError(f"Directory not found: {args.pgn_dir}")
+        data = generate_data(args.pgn_dir, max_games=args.max_games)
         print(f"Generated {len(data)} training examples")
     except ValueError as e:
         print(f"Error: {e}")
-        print("Please ensure that PGN files are present in the 'pgn' directory.")
+        print(f"Please ensure that PGN files are present in the '{args.pgn_dir}' directory.")
         exit(1)
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
@@ -256,4 +256,23 @@ if __name__ == "__main__":
     if args.play:
         print("Starting a game against the model. You'll play as White.")
         play_against_model(model)
- 
+    else:
+        # Test the model
+        print("Testing the model on the initial position...")
+        board = chess.Board()
+        print("Initial board:")
+        print_board_with_enumeration(board)
+        print(f"Turn: {'White' if board.turn == chess.WHITE else 'Black'}")
+        
+        predicted_move, is_predicted = test_model(board, model)
+        print(f"Predicted move: {predicted_move}")
+        if is_predicted:
+            print("This move was predicted by the model.")
+        else:
+            print("This move was randomly selected from legal moves.")
+        
+        if predicted_move in board.legal_moves:
+            print("The move is legal.")
+        else:
+            print("Warning: The move is not legal!")
+            print("Legal moves:", list(board.legal_moves))

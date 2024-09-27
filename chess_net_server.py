@@ -129,6 +129,22 @@ def simple_evaluate(board):
         if piece:
             value = piece_values[piece.piece_type]
             score += value if piece.color == chess.WHITE else -value
+            
+            # Check for hanging pieces
+            if not board.is_attacked_by(not piece.color, square):
+                score += (value // 2) if piece.color == chess.WHITE else -(value // 2)
+    
+    # Check for immediate captures
+    for move in board.legal_moves:
+        if board.is_capture(move):
+            captured_piece = board.piece_at(move.to_square)
+            if captured_piece:
+                capture_value = piece_values[captured_piece.piece_type]
+                moving_piece = board.piece_at(move.from_square)
+                if moving_piece:
+                    moving_value = piece_values[moving_piece.piece_type]
+                    if capture_value > moving_value:
+                        score += (capture_value - moving_value) if board.turn == chess.WHITE else -(capture_value - moving_value)
     
     return score
 

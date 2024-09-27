@@ -130,11 +130,11 @@ def simple_evaluate(board):
             value = piece_values[piece.piece_type]
             score += value if piece.color == chess.WHITE else -value
             
-            # Check for hanging pieces
+            # Increase the value of undefended pieces
             if not board.is_attacked_by(not piece.color, square):
-                score += (value // 2) if piece.color == chess.WHITE else -(value // 2)
+                score += value if piece.color == chess.WHITE else -value
     
-    # Check for immediate captures
+    # Prioritize capturing high-value pieces
     for move in board.legal_moves:
         if board.is_capture(move):
             captured_piece = board.piece_at(move.to_square)
@@ -143,8 +143,12 @@ def simple_evaluate(board):
                 moving_piece = board.piece_at(move.from_square)
                 if moving_piece:
                     moving_value = piece_values[moving_piece.piece_type]
+                    # Strongly encourage capturing higher value pieces
                     if capture_value > moving_value:
-                        score += (capture_value - moving_value) if board.turn == chess.WHITE else -(capture_value - moving_value)
+                        score += (capture_value * 2 - moving_value) if board.turn == chess.WHITE else -(capture_value * 2 - moving_value)
+                    # Slightly discourage equal trades, but still allow them
+                    elif capture_value == moving_value:
+                        score += 50 if board.turn == chess.WHITE else -50
     
     return score
 

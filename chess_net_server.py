@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class ChessNet(nn.Module):
     def __init__(self):
         super(ChessNet, self).__init__()
-        self.fc1 = nn.Linear(8 * 8 * 12 + 1, 1024)  # +1 for the turn information
+        self.fc1 = nn.Linear(8 * 8 * 12 + 1 + 4 + 64 + 2, 1024)  # Updated input size
         self.fc2 = nn.Linear(1024, 512)
         self.fc3 = nn.Linear(512, 4096)  # Output for 64*64 possible moves (simplified)
 
@@ -70,7 +70,31 @@ def board_to_tensor(board):
     # Add turn information
     turn = torch.tensor([1.0 if board.turn == chess.WHITE else 0.0], dtype=torch.float32)
     
-    return torch.cat((tensor.flatten(), turn)).unsqueeze(0)
+    # Add castling rights (4 bits)
+    castling_rights = torch.tensor([
+        float(board.has_kingside_castling_rights(chess.WHITE)),
+        float(board.has_queenside_castling_rights(chess.WHITE)),
+        float(board.has_kingside_castling_rights(chess.BLACK)),
+        float(board.has_queenside_castling_rights(chess.BLACK))
+    ], dtype=torch.float32)
+    
+    # Add en passant square information (1 byte)
+    en_passant = torch.zeros(64, dtype=torch.float32)
+    if board.ep_square is not None:
+        en_passant[board.ep_square] = 1.0
+    
+    # Add move counters
+    halfmove_clock = torch.tensor([board.halfmove_clock / 100.0], dtype=torch.float32)  # Normalize to [0, 1]
+    fullmove_number = torch.tensor([board.fullmove_number / 500.0], dtype=torch.float32)  # Normalize assuming max 500 moves
+    
+    return torch.cat((
+        tensor.flatten(),
+        turn,
+        castling_rights,
+        en_passant,
+        halfmove_clock,
+        fullmove_number
+    )).unsqueeze(0)
 
 def label_to_move(label):
     from_square = label // 64

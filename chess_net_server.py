@@ -241,6 +241,7 @@ def get_ai_move():
                     return jsonify({
                         "status": "ok",
                         "move": move.uci(),
+                        "predicted": True,
                         "new_fen": board.fen(en_passant='fen')
                     })
             except ValueError:
@@ -256,6 +257,7 @@ def get_ai_move():
             return jsonify({
                 "status": "ok",
                 "move": random_move.uci(),
+                "predicted": False,
                 "new_fen": board.fen(en_passant='fen')
             })
         else:

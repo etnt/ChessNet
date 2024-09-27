@@ -189,10 +189,11 @@ def get_ai_move(board, status_message):
         response = requests.get(f"{API_URL}/get_move")
         response.raise_for_status()
         response_data = response.json()
+        predicted = "predicted" if response_data.get("predicted", False) else "random"
         if response_data["status"] == "ok":
             ai_move = chess.Move.from_uci(response_data["move"])
             board.push(ai_move)
-            status_message = f"AI moved: {ai_move.uci()}. Your turn."
+            status_message = f"AI {predicted} move: {ai_move.uci()}. Your turn."
         elif response_data["status"] == "game_over":
             status_message = f"Game over. Result: {response_data['result']}"
         else:

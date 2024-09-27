@@ -1,4 +1,7 @@
 python-chess
 torch
 numpy
-
+Flask
+Flask-CORS
+pygame
+requests

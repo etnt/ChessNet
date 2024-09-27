@@ -28,7 +28,7 @@ class ChessNet(nn.Module):
         return x
     
 # Function to convert the board state into a numerical representation
-def board_to_tensor(board):
+def board_to_tensor(board, device):
     piece_map = board.piece_map()
     tensor = np.zeros((8, 8, 12), dtype=np.float32)
     piece_types = {'P': 0, 'N': 1, 'B': 2, 'R': 3, 'Q': 4, 'K': 5,
@@ -41,7 +41,7 @@ def board_to_tensor(board):
     # Add turn information
     turn = np.array([1.0 if board.turn == chess.WHITE else 0.0], dtype=np.float32)
     
-    return torch.tensor(np.concatenate((tensor.flatten(), turn)))
+    return torch.tensor(np.concatenate((tensor.flatten(), turn)), device=device)
 
 # Function to encode move as a label (64*64 possible moves)
 def move_to_label(move):
@@ -69,7 +69,7 @@ def read_pgn_files(directory):
     return games
 
 # Generate dataset using PGN games
-def generate_data(pgn_directory, max_games=None):
+def generate_data(pgn_directory, device, max_games=None):
     data = []
     games = read_pgn_files(pgn_directory)
     print(f"Found {len(games)} games in the PGN directory.")
@@ -85,14 +85,15 @@ def generate_data(pgn_directory, max_games=None):
             total_moves += 1
             if total_moves % 1000 == 0:  # Print progress every 1000 moves
                 print(f"Processed {i+1} games, {total_moves} total moves")
-            data.append((board_to_tensor(board), move_to_label(move)))
+            data.append((board_to_tensor(board, device), move_to_label(move)))
             board.push(move)
     
     print(f"Processed {num_games} games. Total positions: {len(data)}")
     return data
 
 # Train the neural network using PGN data
-def train_model(data, model, epochs=10, batch_size=64, learning_rate=0.001):
+def train_model(data, model, device, epochs=10, batch_size=64, learning_rate=0.001):
+    model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
     
@@ -102,8 +103,8 @@ def train_model(data, model, epochs=10, batch_size=64, learning_rate=0.001):
         for i in range(0, len(data), batch_size):
             batch = data[i:i+batch_size]
             boards, labels = zip(*batch)
-            boards = torch.stack(boards)
-            labels = torch.tensor(labels)
+            boards = torch.stack(boards).to(device)
+            labels = torch.tensor(labels, device=device)
             
             optimizer.zero_grad()
             outputs = model(boards)
@@ -115,8 +116,9 @@ def train_model(data, model, epochs=10, batch_size=64, learning_rate=0.001):
         print(f"Epoch [{epoch+1}/{epochs}], Loss: {total_loss/len(data)}")
 
 # Test the model by making a prediction
-def test_model(board, model):
-    board_tensor = board_to_tensor(board).unsqueeze(0)
+def test_model(board, model, device):
+    model.to(device)
+    board_tensor = board_to_tensor(board, device).unsqueeze(0)
     with torch.no_grad():
         output = model(board_tensor)
     
@@ -149,7 +151,7 @@ def print_board_with_enumeration(board):
     print(col_labels)
 
 # Function to play against the model
-def play_against_model(model):
+def play_against_model(model, device):
     board = chess.Board()
     
     while not board.is_game_over():
@@ -171,7 +173,7 @@ def play_against_model(model):
                     print("Invalid input. Please use UCI format (e.g., 'e2e4').")
         else:
             # Model's turn (Black)
-            move, is_predicted = test_model(board, model)
+            move, is_predicted = test_model(board, model, device)
             if is_predicted:
                 move_type = 'predicted'
             else:
@@ -215,12 +217,33 @@ def parse_args():
     parser.add_argument("--model-dir", type=str, default="./model", help="Directory to save the trained model (default: ./model)")
     parser.add_argument("--play", action="store_true", help="Play against the model after training")
     parser.add_argument("--pgn-dir", type=str, default="./pgn", help="Directory containing PGN files (default: ./pgn)")
+    parser.add_argument("--device", type=str, default="auto", choices=["cpu", "cuda", "mps", "auto"], help="Device to use for training (default: auto)")
     return parser.parse_args()
+
+# Function to select the appropriate device
+def select_device(device_preference):
+    if device_preference == "auto":
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        elif torch.backends.mps.is_available():
+            return torch.device("mps")
+        else:
+            return torch.device("cpu")
+    elif device_preference == "cuda" and torch.cuda.is_available():
+        return torch.device("cuda")
+    elif device_preference == "mps" and torch.backends.mps.is_available():
+        return torch.device("mps")
+    else:
+        return torch.device("cpu")
 
 # Main function
 if __name__ == "__main__":
     # Parse command-line arguments
     args = parse_args()
+
+    # Select the appropriate device
+    device = select_device(args.device)
+    print(f"Using device: {device}")
 
     # Initialize the neural network model
     model = ChessNet()
@@ -230,7 +253,7 @@ if __name__ == "__main__":
     try:
         if not os.path.exists(args.pgn_dir):
             raise ValueError(f"Directory not found: {args.pgn_dir}")
-        data = generate_data(args.pgn_dir, max_games=args.max_games)
+        data = generate_data(args.pgn_dir, device, max_games=args.max_games)
         print(f"Generated {len(data)} training examples")
     except ValueError as e:
         print(f"Error: {e}")
@@ -246,7 +269,7 @@ if __name__ == "__main__":
     
     # Step 2: Train the model on the generated data
     print("Training model...")
-    train_model(data, model, epochs=5)
+    train_model(data, model, device, epochs=5)
 
     # Step 3: Save the trained model
     print("Saving model...")
@@ -255,7 +278,7 @@ if __name__ == "__main__":
     # Step 4: Either play against the model or test it on the initial position
     if args.play:
         print("Starting a game against the model. You'll play as White.")
-        play_against_model(model)
+        play_against_model(model, device)
     else:
         # Test the model
         print("Testing the model on the initial position...")
@@ -264,7 +287,7 @@ if __name__ == "__main__":
         print_board_with_enumeration(board)
         print(f"Turn: {'White' if board.turn == chess.WHITE else 'Black'}")
         
-        predicted_move, is_predicted = test_model(board, model)
+        predicted_move, is_predicted = test_model(board, model, device)
         print(f"Predicted move: {predicted_move}")
         if is_predicted:
             print("This move was predicted by the model.")

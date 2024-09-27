@@ -130,11 +130,12 @@ def simple_evaluate(board):
             value = piece_values[piece.piece_type]
             score += value if piece.color == chess.WHITE else -value
             
-            # Increase the value of undefended pieces
-            if not board.is_attacked_by(not piece.color, square):
-                score += value if piece.color == chess.WHITE else -value
+            # Heavily penalize undefended pieces
+            if not board.attackers(piece.color, square):
+                penalty = value * 3  # Tripling the penalty for undefended pieces
+                score -= penalty if piece.color == chess.WHITE else penalty
     
-    # Prioritize capturing high-value pieces
+    # Prioritize capturing high-value pieces and avoiding captures
     for move in board.legal_moves:
         if board.is_capture(move):
             captured_piece = board.piece_at(move.to_square)
@@ -145,10 +146,16 @@ def simple_evaluate(board):
                     moving_value = piece_values[moving_piece.piece_type]
                     # Strongly encourage capturing higher value pieces
                     if capture_value > moving_value:
-                        score += (capture_value * 2 - moving_value) if board.turn == chess.WHITE else -(capture_value * 2 - moving_value)
-                    # Slightly discourage equal trades, but still allow them
+                        score += (capture_value * 3 - moving_value) if board.turn == chess.WHITE else -(capture_value * 3 - moving_value)
+                    # Slightly encourage equal trades
                     elif capture_value == moving_value:
-                        score += 50 if board.turn == chess.WHITE else -50
+                        score += 100 if board.turn == chess.WHITE else -100
+        else:
+            # Penalize moves that leave pieces hanging
+            moving_piece = board.piece_at(move.from_square)
+            if moving_piece and not board.attackers(board.turn, move.to_square):
+                penalty = piece_values[moving_piece.piece_type] * 2
+                score -= penalty if board.turn == chess.WHITE else -penalty
     
     return score
 

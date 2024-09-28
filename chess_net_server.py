@@ -25,6 +25,15 @@ opening_book = None
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+piece_values = {
+    chess.PAWN: 100,
+    chess.NKNIGHT: 320,
+    chess.BISHOP: 330,
+    chess.ROOK: 500,
+    chess.QUEEN: 900,
+    chess.KING: 20000
+}
+
 class ChessNet(nn.Module):
     def __init__(self):
         super(ChessNet, self).__init__()

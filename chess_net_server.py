@@ -154,10 +154,10 @@ def simple_evaluate(board):
                     moving_value = piece_values[moving_piece.piece_type]
                     # Strongly encourage capturing higher value pieces
                     if capture_value > moving_value:
-                        score += (capture_value * 3 - moving_value) if board.turn == ai_color else -(capture_value * 3 - moving_value)
+                        score += (capture_value * 3 - moving_value)
                     # Slightly encourage equal trades
                     elif capture_value == moving_value:
-                        score += 100 if board.turn == ai_color else -100
+                        score += 100
         else:
             # Penalize moves that leave pieces hanging
             moving_piece = board.piece_at(move.from_square)

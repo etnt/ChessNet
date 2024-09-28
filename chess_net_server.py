@@ -132,16 +132,15 @@ def simple_evaluate(board):
         if piece:
             value = piece_values[piece.piece_type]
             score += value if piece.color == ai_color else -value
-            
-            # Heavily penalize undefended pieces
-            if not board.attackers(piece.color, square):
-                penalty = value * 3  # Tripling the penalty for undefended pieces
-                score -= penalty if piece.color == ai_color else penalty
 
-            # Reward for opponent's undefended pieces
-            elif piece.color != ai_color and not board.attackers(piece.color, square):
-                bonus = value * 2  # Double the bonus for opponent's undefended pieces
-                score += bonus
+            if piece.color == ai_color:
+                if not board.attackers(piece.color, square):
+                    penalty = value * 3  # Tripling the penalty for our undefended pieces
+                    score -= penalty
+            else:
+                if not board.attackers(piece.color, square):
+                    bonus = value * 2  # Double the bonus for opponent's undefended pieces
+                    score += bonus
     
     # Prioritize capturing high-value pieces and avoiding captures
     for move in board.legal_moves:

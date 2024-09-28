@@ -122,7 +122,7 @@ def label_to_move(label):
 
 def simple_evaluate(board):
     if board.is_checkmate():
-        return -10000 if board.turn else 10000
+        return -10000 if board.turn == ai_color else 10000
     if board.is_stalemate() or board.is_insufficient_material():
         return 0
     
@@ -136,12 +136,12 @@ def simple_evaluate(board):
             # Heavily penalize undefended pieces
             if not board.attackers(piece.color, square):
                 penalty = value * 3  # Tripling the penalty for undefended pieces
-                score -= penalty if piece.color == ai_color else -penalty
+                score -= penalty if piece.color == ai_color else penalty
 
             # Reward for opponent's undefended pieces
-            elif piece.color != board.turn and not board.attackers(piece.color, square):
+            elif piece.color != ai_color and not board.attackers(piece.color, square):
                 bonus = value * 2  # Double the bonus for opponent's undefended pieces
-                score += bonus if piece.color != ai_color else -bonus
+                score += bonus
     
     # Prioritize capturing high-value pieces and avoiding captures
     for move in board.legal_moves:
@@ -161,9 +161,9 @@ def simple_evaluate(board):
         else:
             # Penalize moves that leave pieces hanging
             moving_piece = board.piece_at(move.from_square)
-            if moving_piece and not board.attackers(board.turn, move.to_square):
+            if moving_piece and not board.attackers(moving_piece.color, move.to_square):
                 penalty = piece_values[moving_piece.piece_type] * 2
-                score -= penalty if board.turn == ai_color else -penalty
+                score -= penalty if moving_piece.color == ai_color else penalty
     
     return score
 

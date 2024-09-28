@@ -136,7 +136,7 @@ def simple_evaluate(board):
             # Heavily penalize undefended pieces
             if not board.attackers(piece.color, square):
                 penalty = value * 3  # Tripling the penalty for undefended pieces
-                score -= penalty if piece.color == chess.WHITE else penalty
+                score -= penalty if piece.color == ai_color else -penalty
 
             # Reward for opponent's undefended pieces
             elif piece.color != board.turn and not board.attackers(piece.color, square):

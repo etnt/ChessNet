@@ -134,6 +134,11 @@ def simple_evaluate(board):
             if not board.attackers(piece.color, square):
                 penalty = value * 3  # Tripling the penalty for undefended pieces
                 score -= penalty if piece.color == chess.WHITE else penalty
+
+            # Reward for opponent's undefended pieces
+            elif piece.color != board.turn and not board.attackers(piece.color, square):
+                bonus = value * 2  # Double the bonus for opponent's undefended pieces
+                score += bonus if piece.color != chess.WHITE else -bonus
     
     # Prioritize capturing high-value pieces and avoiding captures
     for move in board.legal_moves:
@@ -159,6 +164,21 @@ def simple_evaluate(board):
     
     return score
 
+def move_ordering(board, move):
+    """
+    Assign a score to moves for move ordering in the minimax algorithm.
+    Higher score means higher priority.
+    """
+    score = 0
+    if board.is_capture(move):
+        captured_piece = board.piece_at(move.to_square)
+        if captured_piece:
+            capture_value = piece_values[captured_piece.piece_type]
+            score += capture_value
+    if move.promotion:
+        score += 1000  # High priority for promotions
+    return score
+
 def minimax(board, depth, alpha, beta, maximizing_player):
     """
     Minimax algorithm with alpha-beta pruning for move evaluation.
@@ -179,7 +199,9 @@ def minimax(board, depth, alpha, beta, maximizing_player):
     best_move = None
     if maximizing_player:
         max_eval = float('-inf')
-        for move in board.legal_moves:
+        legal_moves = list(board.legal_moves)
+        legal_moves.sort(key=lambda move: move_ordering(board, move), reverse=True)
+        for move in legal_moves:
             board.push(move)
             eval, _ = minimax(board, depth - 1, alpha, beta, False)
             board.pop()
@@ -192,7 +214,9 @@ def minimax(board, depth, alpha, beta, maximizing_player):
         return max_eval, best_move
     else:
         min_eval = float('inf')
-        for move in board.legal_moves:
+        legal_moves = list(board.legal_moves)
+        legal_moves.sort(key=lambda move: move_ordering(board, move))
+        for move in legal_moves:
             board.push(move)
             eval, _ = minimax(board, depth - 1, alpha, beta, True)
             board.pop()

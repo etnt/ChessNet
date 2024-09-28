@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 piece_values = {
     chess.PAWN: 100,
-    chess.NKNIGHT: 320,
+    chess.KNIGHT: 320,
     chess.BISHOP: 330,
     chess.ROOK: 500,
     chess.QUEEN: 900,

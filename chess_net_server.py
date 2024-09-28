@@ -22,6 +22,9 @@ move_history = deque()
 current_position = -1
 opening_book = None
 
+# Set AI color (e.g., chess.BLACK or chess.WHITE)
+ai_color = chess.BLACK
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -128,7 +131,7 @@ def simple_evaluate(board):
         piece = board.piece_at(square)
         if piece:
             value = piece_values[piece.piece_type]
-            score += value if piece.color == chess.WHITE else -value
+            score += value if piece.color == ai_color else -value
             
             # Heavily penalize undefended pieces
             if not board.attackers(piece.color, square):
@@ -138,7 +141,7 @@ def simple_evaluate(board):
             # Reward for opponent's undefended pieces
             elif piece.color != board.turn and not board.attackers(piece.color, square):
                 bonus = value * 2  # Double the bonus for opponent's undefended pieces
-                score += bonus if piece.color != chess.WHITE else -bonus
+                score += bonus if piece.color != ai_color else -bonus
     
     # Prioritize capturing high-value pieces and avoiding captures
     for move in board.legal_moves:
@@ -160,7 +163,7 @@ def simple_evaluate(board):
             moving_piece = board.piece_at(move.from_square)
             if moving_piece and not board.attackers(board.turn, move.to_square):
                 penalty = piece_values[moving_piece.piece_type] * 2
-                score -= penalty if board.turn == chess.WHITE else -penalty
+                score -= penalty if board.turn == ai_color else -penalty
     
     return score
 
@@ -257,7 +260,8 @@ def generate_move(num_moves=10, depth=4):
             return [board.san(book_move.move)], "book"
 
         # Use minimax to evaluate the best move
-        _, best_move = minimax(board, depth, float('-inf'), float('inf'), board.turn == chess.WHITE)
+        maximizing_player = (board.turn == ai_color)
+        _, best_move = minimax(board, depth, float('-inf'), float('inf'), maximizing_player)
         
         if best_move:
             logger.info(f"Generated move: {best_move.uci()}")

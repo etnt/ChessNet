@@ -77,6 +77,36 @@ def load_model(model_path, book_path):
         raise
 
 def board_to_tensor(board):
+    """
+    Convert a chess board state to a tensor representation for input to the neural network.
+
+    This function takes a chess.Board object and converts it into a tensor that represents
+    the board state, including piece positions, turn information, castling rights,
+    en passant possibilities, and move counters.
+
+    Args:
+        board (chess.Board): The current chess board state.
+
+    Returns:
+        torch.Tensor: A tensor representation of the board state with shape (1, 773).
+
+    The tensor is structured as follows:
+    1. Piece positions (8x8x12 = 768 elements):
+       - 12 channels, one for each piece type and color
+       - 1 indicates the presence of a piece, 0 indicates absence
+    2. Turn information (1 element):
+       - 1.0 for White's turn, 0.0 for Black's turn
+    3. Castling rights (4 elements):
+       - One element each for White kingside, White queenside, Black kingside, Black queenside
+       - 1.0 if the castling right is available, 0.0 if not
+    4. En passant square (64 elements):
+       - One-hot encoding of the en passant square if available, all zeros if not
+    5. Move counters (2 elements):
+       - Halfmove clock (normalized to [0, 1])
+       - Fullmove number (normalized assuming max 500 moves)
+
+    The resulting tensor is flattened and unsqueezed to create a batch dimension of 1.
+    """
     piece_map = board.piece_map()
     tensor = torch.zeros((8, 8, 12), dtype=torch.float32)
     piece_types = {'P': 0, 'N': 1, 'B': 2, 'R': 3, 'Q': 4, 'K': 5,

@@ -163,37 +163,51 @@ def simple_evaluate(board):
             value = piece_values[piece.piece_type]
             score += value if piece.color == ai_color else -value
 
+            # Evaluate piece mobility
+            mobility = len(list(board.attacks(square)))
+            mobility_factor = 10
             if piece.color == ai_color:
-                if not board.attackers(piece.color, square):
-                    penalty = value * 3  # Tripling the penalty for our undefended pieces
-                    score -= penalty
+                score += mobility * mobility_factor
             else:
-                if not board.attackers(piece.color, square):
-                    bonus = value * 2  # Double the bonus for opponent's undefended pieces
-                    score += bonus
+                score -= mobility * mobility_factor
+
+    # Evaluate king safety
+    white_king_square = board.king(chess.WHITE)
+    black_king_square = board.king(chess.BLACK)
     
-    # Prioritize capturing high-value pieces and avoiding captures
-    for move in board.legal_moves:
-        if board.is_capture(move):
-            captured_piece = board.piece_at(move.to_square)
-            if captured_piece:
-                capture_value = piece_values[captured_piece.piece_type]
-                moving_piece = board.piece_at(move.from_square)
-                if moving_piece:
-                    moving_value = piece_values[moving_piece.piece_type]
-                    # Strongly encourage capturing higher value pieces
-                    if capture_value > moving_value:
-                        score += (capture_value * 3 - moving_value)
-                    # Slightly encourage equal trades
-                    elif capture_value == moving_value:
-                        score += 100
+    white_king_attackers = len(board.attackers(chess.BLACK, white_king_square))
+    black_king_attackers = len(board.attackers(chess.WHITE, black_king_square))
+    
+    king_safety_factor = 50
+    if ai_color == chess.WHITE:
+        score -= white_king_attackers * king_safety_factor
+        score += black_king_attackers * king_safety_factor
+    else:
+        score += white_king_attackers * king_safety_factor
+        score -= black_king_attackers * king_safety_factor
+
+    # Evaluate center control
+    center_squares = [chess.E4, chess.D4, chess.E5, chess.D5]
+    center_control_factor = 30
+    for square in center_squares:
+        if board.piece_at(square):
+            if board.piece_at(square).color == ai_color:
+                score += center_control_factor
+            else:
+                score -= center_control_factor
         else:
-            # Penalize moves that leave pieces hanging
-            moving_piece = board.piece_at(move.from_square)
-            if moving_piece and not board.attackers(moving_piece.color, move.to_square):
-                penalty = piece_values[moving_piece.piece_type] * 2
-                score -= penalty if moving_piece.color == ai_color else penalty
-    
+            white_attackers = len(board.attackers(chess.WHITE, square))
+            black_attackers = len(board.attackers(chess.BLACK, square))
+            if ai_color == chess.WHITE:
+                score += (white_attackers - black_attackers) * center_control_factor
+            else:
+                score += (black_attackers - white_attackers) * center_control_factor
+
+    # Penalize bad moves in the Nimzo-Indian Defense
+    #if board.piece_at(chess.C4) and board.piece_at(chess.C4).piece_type == chess.PAWN and board.piece_at(chess.C4).color == chess.WHITE:
+    #    if board.piece_at(chess.D2) and board.piece_at(chess.D2).piece_type == chess.KNIGHT and board.piece_at(chess.D2).color == chess.WHITE:
+    #        score -= 200  # Penalize Nc3 before playing e3 in the Nimzo-Indian
+
     return score
 
 def move_ordering(board, move):
@@ -524,7 +538,7 @@ def handle_exception(e):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Chess server using ChessNet model and opening book")
-    parser.add_argument("--model", default="./chess_model", help="Path to the trained model (default: ./chess_model)")
+    parser.add_argument("--model", default="./model/chess_model.pth", help="Path to the trained model (default: ./model/chess_model.pth)")
     parser.add_argument("--book", default="./opening_books/Titans.bin", help="Path to the opening book file (default: ./opening_books/Titans.bin)")
     parser.add_argument("--port", type=int, default=9999, help="Port to run the server on (default: 9999)")
     

@@ -52,6 +52,19 @@ class ChessNet(nn.Module):
         x = self.fc3(x)
         return x
 
+def get_device():
+    # Check for available devices
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        logger.info("Using CUDA")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+        logger.info("Using MPS")
+    else:
+        device = torch.device("cpu")
+        logger.info("Using CPU")
+    return device
+
 def load_model(model_path, book_path, use_huggingface=False):
     """
     Load the ChessNet model and opening book from the specified paths.
@@ -71,7 +84,8 @@ def load_model(model_path, book_path, use_huggingface=False):
         if use_huggingface:
             model_path = download_from_huggingface(model_path)
         
-        checkpoint = torch.load(model_path, map_location=torch.device('cpu'))
+        device = get_device(),
+        checkpoint = torch.load(model_path, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
         model.eval()  # Set the model to evaluation mode
         logger.info("Model loaded successfully")

@@ -57,7 +57,7 @@ def get_device():
     if torch.cuda.is_available():
         device = torch.device("cuda")
         logger.info("Using CUDA")
-    elif torch.backends.mps.is_available():
+    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
         device = torch.device("mps")
         logger.info("Using MPS")
     else:
@@ -84,9 +84,16 @@ def load_model(model_path, book_path, use_huggingface=False):
         if use_huggingface:
             model_path = download_from_huggingface(model_path)
         
-        device = get_device(),
+        device = get_device()
         checkpoint = torch.load(model_path, map_location=device)
-        model.load_state_dict(checkpoint['model_state_dict'])
+        
+        # Check if the checkpoint is a state_dict or a full model
+        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+            model.load_state_dict(checkpoint['model_state_dict'])
+        else:
+            model.load_state_dict(checkpoint)
+        
+        model.to(device)
         model.eval()  # Set the model to evaluation mode
         logger.info("Model loaded successfully")
 

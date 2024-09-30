@@ -203,11 +203,6 @@ def simple_evaluate(board):
             else:
                 score += (black_attackers - white_attackers) * center_control_factor
 
-    # Penalize bad moves in the Nimzo-Indian Defense
-    #if board.piece_at(chess.C4) and board.piece_at(chess.C4).piece_type == chess.PAWN and board.piece_at(chess.C4).color == chess.WHITE:
-    #    if board.piece_at(chess.D2) and board.piece_at(chess.D2).piece_type == chess.KNIGHT and board.piece_at(chess.D2).color == chess.WHITE:
-    #        score -= 200  # Penalize Nc3 before playing e3 in the Nimzo-Indian
-
     return score
 
 def move_ordering(board, move):

@@ -10,6 +10,8 @@ import traceback
 from flask_cors import CORS
 from collections import deque
 import chess.polyglot
+from huggingface_hub import hf_hub_download
+import os
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)  # Enable CORS for all routes and origins, and allow credentials
@@ -50,13 +52,14 @@ class ChessNet(nn.Module):
         x = self.fc3(x)
         return x
 
-def load_model(model_path, book_path):
+def load_model(model_path, book_path, use_huggingface=False):
     """
     Load the ChessNet model and opening book from the specified paths.
 
     Args:
-        model_path (str): Path to the trained model.
+        model_path (str): Path to the trained model or Hugging Face model ID.
         book_path (str): Path to the opening book file.
+        use_huggingface (bool): Whether to use Hugging Face model or local model.
 
     Global variables:
         model: The loaded ChessNet model.
@@ -65,7 +68,10 @@ def load_model(model_path, book_path):
     global model, opening_book
     try:
         model = ChessNet()
-        checkpoint = torch.load(model_path, weights_only=True)
+        if use_huggingface:
+            model_path = download_from_huggingface(model_path)
+        
+        checkpoint = torch.load(model_path, map_location=torch.device('cpu'))
         model.load_state_dict(checkpoint['model_state_dict'])
         model.eval()  # Set the model to evaluation mode
         logger.info("Model loaded successfully")
@@ -74,6 +80,24 @@ def load_model(model_path, book_path):
         logger.info("Opening book loaded successfully")
     except Exception as e:
         logger.error(f"Error loading model or opening book: {str(e)}")
+        raise
+
+def download_from_huggingface(model_id):
+    """
+    Download the model from Hugging Face Hub.
+
+    Args:
+        model_id (str): The Hugging Face model ID.
+
+    Returns:
+        str: Path to the downloaded model file.
+    """
+    try:
+        model_path = hf_hub_download(repo_id=model_id, filename="chess_model.pth")
+        logger.info(f"Model downloaded from Hugging Face: {model_path}")
+        return model_path
+    except Exception as e:
+        logger.error(f"Error downloading model from Hugging Face: {str(e)}")
         raise
 
 def board_to_tensor(board):
@@ -533,12 +557,13 @@ def handle_exception(e):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Chess server using ChessNet model and opening book")
-    parser.add_argument("--model", default="./model/chess_model.pth", help="Path to the trained model (default: ./model/chess_model.pth)")
+    parser.add_argument("--model", default="./model/chess_model.pth", help="Path to the trained model or Hugging Face model ID")
     parser.add_argument("--book", default="./opening_books/Titans.bin", help="Path to the opening book file (default: ./opening_books/Titans.bin)")
     parser.add_argument("--port", type=int, default=9999, help="Port to run the server on (default: 9999)")
+    parser.add_argument("--use-huggingface", action="store_true", help="Use Hugging Face model instead of local model")
     
     args = parser.parse_args()
 
-    load_model(args.model, args.book)
+    load_model(args.model, args.book, args.use_huggingface)
 
-    app.run(debug=True, port=args.port , host='0.0.0.0')
+    app.run(debug=True, port=args.port, host='0.0.0.0')

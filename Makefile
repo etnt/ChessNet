@@ -1,7 +1,7 @@
 
 VENV_NAME := venv
 PYTHON := python3
-PIP := $(VENV_NAME)/bin/pip
+PIP := ./$(VENV_NAME)/bin/pip
 REQUIREMENTS := requirements.txt
 
 
@@ -37,4 +37,4 @@ install-requirements:
 	$(PIP) install -r $(REQUIREMENTS)
 
 test: venv
-	./venv/bin/$(PYTHON) -m unittest test_runnable_parsers.py
+	./venv/bin/$(PYTHON) -m unittest test_chess_net_server.py

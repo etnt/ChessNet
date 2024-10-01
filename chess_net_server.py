@@ -23,6 +23,7 @@ board = None
 move_history = deque()
 current_position = -1
 opening_book = None
+device = None
 
 # Set AI color (e.g., chess.BLACK or chess.WHITE)
 ai_color = chess.BLACK
@@ -53,6 +54,7 @@ class ChessNet(nn.Module):
         return x
 
 def get_device():
+    global device
     # Check for available devices
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -78,7 +80,7 @@ def load_model(model_path, book_path, use_huggingface=False):
         model: The loaded ChessNet model.
         opening_book: The loaded opening book reader.
     """
-    global model, opening_book
+    global model, opening_book, device
     try:
         model = ChessNet()
         if use_huggingface:
@@ -152,8 +154,9 @@ def board_to_tensor(board):
 
     The resulting tensor is flattened and unsqueezed to create a batch dimension of 1.
     """
+    global device
     piece_map = board.piece_map()
-    tensor = torch.zeros((8, 8, 12), dtype=torch.float32)
+    tensor = torch.zeros((8, 8, 12), dtype=torch.float32, device=device)
     piece_types = {'P': 0, 'N': 1, 'B': 2, 'R': 3, 'Q': 4, 'K': 5,
                    'p': 6, 'n': 7, 'b': 8, 'r': 9, 'q': 10, 'k': 11}
     
@@ -162,7 +165,7 @@ def board_to_tensor(board):
         tensor[row, col, piece_types[piece.symbol()]] = 1
     
     # Add turn information
-    turn = torch.tensor([1.0 if board.turn == chess.WHITE else 0.0], dtype=torch.float32)
+    turn = torch.tensor([1.0 if board.turn == chess.WHITE else 0.0], dtype=torch.float32, device=device)
     
     # Add castling rights (4 bits)
     castling_rights = torch.tensor([
@@ -170,16 +173,16 @@ def board_to_tensor(board):
         float(board.has_queenside_castling_rights(chess.WHITE)),
         float(board.has_kingside_castling_rights(chess.BLACK)),
         float(board.has_queenside_castling_rights(chess.BLACK))
-    ], dtype=torch.float32)
+    ], dtype=torch.float32, device=device)
     
     # Add en passant square information (1 byte)
-    en_passant = torch.zeros(64, dtype=torch.float32)
+    en_passant = torch.zeros(64, dtype=torch.float32, device=device)
     if board.ep_square is not None:
         en_passant[board.ep_square] = 1.0
     
     # Add move counters
-    halfmove_clock = torch.tensor([board.halfmove_clock / 100.0], dtype=torch.float32)  # Normalize to [0, 1]
-    fullmove_number = torch.tensor([board.fullmove_number / 500.0], dtype=torch.float32)  # Normalize assuming max 500 moves
+    halfmove_clock = torch.tensor([board.halfmove_clock / 100.0], dtype=torch.float32, device=device)  # Normalize to [0, 1]
+    fullmove_number = torch.tensor([board.fullmove_number / 500.0], dtype=torch.float32, device=device)  # Normalize assuming max 500 moves
     
     return torch.cat((
         tensor.flatten(),
@@ -194,6 +197,16 @@ def label_to_move(label):
     from_square = label // 64
     to_square = label % 64
     return chess.Move(from_square, to_square)
+
+def evaluate_position(board):
+    """Evaluates a chess position using the neural network."""
+    global model, device
+    with torch.no_grad():
+        board_tensor = board_to_tensor(board).to(device)
+        output = model(board_tensor)
+        _, top_move_index = torch.max(output, 1)
+        top_move_prob = torch.softmax(output, 1)[0, top_move_index]
+        return top_move_prob.item()
 
 def simple_evaluate(board):
     if board.is_checkmate():
@@ -250,6 +263,28 @@ def simple_evaluate(board):
 
     return score
 
+def combined_evaluate(board):
+    """
+    Combines the neural network evaluation with traditional evaluation techniques.
+    
+    Args:
+        board (chess.Board): The current board state.
+    
+    Returns:
+        float: The combined evaluation score.
+    """
+    global device
+    nn_eval = evaluate_position(board)
+    traditional_eval = simple_evaluate(board)
+    
+    # Normalize the traditional evaluation to be between 0 and 1
+    normalized_traditional_eval = 1 / (1 + torch.exp(-torch.tensor(traditional_eval / 1000, device=device)))
+    
+    # Combine the evaluations (you can adjust the weights)
+    combined_score = 0.7 * nn_eval + 0.3 * normalized_traditional_eval.item()
+    
+    return combined_score
+
 def move_ordering(board, move):
     """
     Assign a score to moves for move ordering in the minimax algorithm.
@@ -280,7 +315,7 @@ def minimax(board, depth, alpha, beta, maximizing_player):
         tuple: The evaluation score of the best move and the best move itself.
     """
     if depth == 0 or board.is_game_over():
-        return simple_evaluate(board), None
+        return combined_evaluate(board), None
 
     best_move = None
     if maximizing_player:
@@ -342,7 +377,7 @@ def generate_move(num_moves=10, depth=4):
             logger.info(f"Move found in opening book: {book_move.move}")
             return [board.san(book_move.move)], "book"
 
-        # Use minimax to evaluate the best move
+        # Use minimax with combined evaluation to find the best move
         maximizing_player = (board.turn == ai_color)
         _, best_move = minimax(board, depth, float('-inf'), float('inf'), maximizing_player)
         

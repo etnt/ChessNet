@@ -15,6 +15,18 @@ logging.basicConfig(level=logging.INFO)
 
 # Neural network to predict the best move from the board state
 class ChessNet(nn.Module):
+    """
+    A neural network model for predicting chess moves.
+
+    This model takes a numerical representation of a chess board state as input and 
+    outputs a probability distribution over all possible moves.  The architecture 
+    consists of three fully connected layers with ReLU activation functions.
+
+    Attributes:
+        fc1 (nn.Linear): The first fully connected layer.
+        fc2 (nn.Linear): The second fully connected layer.
+        fc3 (nn.Linear): The third fully connected layer (output layer).
+    """
     def __init__(self):
         super(ChessNet, self).__init__()
         self.fc1 = nn.Linear(8 * 8 * 12 + 1 + 4 + 64 + 2, 1024)  # Updated input size
